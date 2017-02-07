@@ -1,0 +1,307 @@
+
+#################################################################################
+# The ID3 algorithm is implemented using R. The package that we use to
+# programatically generate the tree is named "data.tree". If you pay attention to
+# our tree, you will find out that we are using the level of the attribute also
+# as a node, this is the only way that we can make this tree using this package.
+#################################################################################
+
+library(data.tree)
+
+# This function will handle missing instances.
+# Suppose that (x, c(x)) is one of the training examples in S
+# and that the value A(x) is unknown. we will assign it the most
+# common value among examples at node n that have the classification c(x).
+
+
+# U1 is the Monks data set, U2 is the congressional voting dataset
+data = read.csv("C:/Users/Merlin Mpoudeu/SkyDrive/Documents/CSCE_ML/dataset/WheatherData.csv", header = T)
+
+U2 = read.csv("C:/Users/Merlin Mpoudeu/SkyDrive/Documents/CSCE_ML/dataset/CongressionalVotingData.csv", header = T)
+U3 = read.csv("C:/Users/Merlin Mpoudeu/SkyDrive/Documents/CSCE_ML/dataset/wine.csv", header = T)
+
+
+U1 = read.csv("C:/Users/Merlin Mpoudeu/SkyDrive/Documents/CSCE_ML/dataset/MONKS1_TRAIN.csv", header = T)
+col = names(U1)
+for(i in col){
+  U1[,i] = as.factor(U1[,i])
+}
+#################################################################################
+# getting the test set, validation and training set for U1
+################################################################################
+
+set.seed(120)
+Index1 = sample(1:nrow(U1), size = 30, replace = FALSE)
+T1 = U1[Index1,] # First test set
+set.seed(234)
+remaining1 = U1[-Index1,]
+V1Index = sample(1:nrow(remaining1), size = 30, replace = FALSE)
+V1 = remaining1[V1Index,]
+Train1 = remaining1[-V1Index,]
+
+#################################################################################
+
+MissIntance = function(data, attribute){
+  # We always assuma that the last colunm of our data is the target column.
+  if(!is.numeric(data[,attribute])==TRUE){
+    response = names(data)[ncol(data)]
+    ind = grep("TRUE", is.na(data[,attribute]))
+    if(length(ind)>= 1){
+      for (i in ind) {
+        Target = data[i,response]
+        tbl = table(data[,response], data[,attribute])
+        tbl2 = tbl[Target,]
+        Tab = data.frame(tbl2)
+        data[i,attribute] = levels(data[,attribute])[(which.max(Tab[,1]))]
+      }
+    }
+  }else{
+    response = names(data)[ncol(data)]
+    ind = grep("TRUE", is.na(data[,attribute]))
+    for (i in ind) {
+      Target = data[i,response]
+      index = grep(Target, data[,response])
+      dat = data[index,]
+      data[i,attribute] = mean(dat[,attribute],na.rm = TRUE)
+    }
+  }
+  
+  
+  return(data)
+}
+
+# This function will output the impurity of the corresponsing attribute
+TotalImpurity = function(data, attribute){
+  # We always assume that the last colunm of our data is the target column.
+  data = MissIntance(data,attribute)
+  response = names(data)[ncol(data)]
+  Lev_att = unique(data[,response])
+  splitdata = split(data[,!(names(data) %in% attribute)], data[,attribute], drop = TRUE)
+  Lev = names(splitdata)
+  Nm = nrow(data)
+  if(!is.numeric(data[,response])==TRUE){
+    Impurity = 0
+    for (j in 1:length(splitdata)) {
+      cat("Running for ", attribute,"\n")
+      dataj = splitdata[[j]]
+      if(is.data.frame(dataj)==TRUE){
+        Nmj = nrow(dataj)
+        responsej = names(dataj)[ncol(dataj)]
+        tbl = as.data.frame(table(dataj[,responsej]))
+        sum1 = 0
+        for (i in 1:nrow(tbl)) {
+          cat("Running for ", names(splitdata)[j], "level ", Lev_att[i], "\n")
+          pimj = tbl[i,2]/Nmj
+          if(pimj == 0){
+            sum1 = sum1
+          }else{
+            sum1 = sum1 + pimj*log2(pimj)
+          }
+          
+        }
+        sum1 = sum1*Nmj/Nm
+        Impurity = Impurity + sum1
+      }else{
+        Impurity = Impurity
+      }
+      
+      
+    }
+    Impurity = -Impurity
+  }else{
+    Impurity = 0
+    for (j in 1:length(splitdata)) {
+      cat("Running for ", attribute,"\n")
+      dataj = splitdata[[j]]
+      if(is.data.frame(dataj)==TRUE){
+        gmj = mean(dataj[names(dataj)[ncol(dataj)]])
+        sum1 = 0
+        for (i in 1:nrow(dataj)) {
+          cat("Running for ", names(splitdata)[j], "level ", Lev_att[i], "\n")
+          sum1 = sum1 + (dataj[i,names(dataj)[ncol(dataj)]])^2
+        }
+        Impurity = Impurity + sum1
+      }else{
+        Impurity = Impurity 
+      }
+      
+       
+      }
+    Impurity = Impurity/Nm
+    }
+  return(Impurity)
+  }
+  
+# This function will output the attribute with the smallest total entropy.
+ChoseAttribute = function(data){
+  att_list = names(data)[-ncol(data)]
+  vec = numeric(length(att_list))
+  for (i in 1:length(att_list)) {
+    if(is.numeric(data[,att_list[i]])==TRUE){
+      vec[i] = AttNumSplit(data, att_list[i])[[1]]
+    }else{
+      vec[i] = TotalImpurity(data, att_list[i])
+    }
+  }
+  att_list[which.min(vec)]
+}
+
+# This function is used to compute the total entropy of the continuous entropy
+# at a specific cutoff
+TotalImpurityNumeric = function(data){
+  response = names(data)[ncol(data)]
+  Lev_att = unique(data[,response])
+  splitdata = split(data[,!(names(data) %in% names(data)[1])], data[,names(data)[1]], drop = TRUE)
+  Lev = names(splitdata)
+  Nm = nrow(data)
+  Impurity = 0
+  for (j in 1:length(splitdata)) {
+    #cat("Running for ", attribute,"\n")
+    dataj = splitdata[[j]]
+    Nmj = dim(dataj)[1]
+    tbl = as.data.frame(table(dataj[,response]))
+    sum1 = 0
+    for (i in 1:nrow(tbl)) {
+      #cat("Running for ", names(splitdata)[j], "level ", Lev_att[i], "\n")
+      pimj = tbl[i,2]/Nmj
+      if(pimj == 0){
+        sum1 = sum1
+      }else{
+        sum1 = sum1 + pimj*log2(pimj)
+      }
+      
+    }
+    sum1 = sum1*Nmj/Nm
+    Impurity = Impurity + sum1
+  }
+  Impurity = -Impurity
+  return(Impurity)
+  
+}
+
+AttNumSplit = function(data, attribute){
+  ##################################################################
+  # This function will output the impurity for numerical attribut and 
+  # the cutoff.
+  ###################################################################
+  data = data[order(data[,attribute]),]
+  NumSplit = numeric(dim(data)[1]-1)
+  TT = numeric(dim(data)[1]-1)
+  
+  for (l  in 1:(dim(data)[1]-1)) {
+    att_factor = numeric(length(dim(data)[1]))
+    t = (data[l,attribute]+ data[(l+1),attribute])/2
+    TT[l] = t
+  
+    for (j  in 1:dim(data)[1]) {
+      if(data[j,attribute] <= t){
+        att_factor[j] = paste("<=", t)
+      }else{
+        att_factor[j] = paste(">", t)
+      }
+    }
+    data21 = data.frame(att_factor, data)
+    NumSplit[l] = TotalImpurityNumeric(data21)
+  }
+  tt = TT[which.min(NumSplit)]
+  data21 = data21[,-1]
+  att_factor = numeric(dim(data21)[1])
+  for (j  in 1:dim(data)[1]) {
+    if(data21[j,attribute] <= tt){
+      att_factor[j] = paste("<=", tt)
+    }else{
+      att_factor[j] = paste(">", tt)
+    }
+  }
+  data21 = data.frame(att_factor, data21)
+  Output = list(NumSplit[which.min(NumSplit)],tt)
+}
+
+NewData = function(data, attribute, t){
+  #####################################################################
+  # This function will output the new data set with the numerical chosen 
+  # attribute convert to a factor according to the cutoff level
+  ######################################################################
+  att_factor = numeric(dim(data)[1])
+  if(is.data.frame(data)==TRUE){
+    for (k in 1:length(data[,attribute])) {
+      if(data[k,attribute]<= t){
+        att_factor[k] = paste("<=", t)
+      }else{
+        att_factor[k] = paste(">", t)
+      }
+    }
+    
+  }else{
+    for (k in 1:length(data)) {
+      if(data[k]<= t){
+        att_factor[k] = paste("<=", t)
+      }else{
+        att_factor[k] = paste(">", t)
+      }
+    }
+    
+  }
+  data = data.frame(att_factor, data)
+  data
+}
+
+
+# Classification Tree with rpart
+
+
+
+TrainID3 = function(data,Root, mypath=c()){
+  #response = names(data)[ncol(data)]
+  Root$obsCount = nrow(data)
+  if(is.data.frame(data)==FALSE){
+    classvalue = data
+    leaf = Root$AddChild(classvalue)
+    leaf$obsCount = 1
+    Root$feature = tail(names(data),1)
+    mypath = paste(mypath, paste("class == ",classvalue, sep = ""))
+    print(mypath)
+  }else if(length(unique(data[, ncol(data)])) == 1){
+    # homogeneity check
+    classvalue = unique(data[, ncol(data)])
+    leaf = Root$AddChild(classvalue)
+    leaf$obsCount = nrow(data)
+    Root$feature = tail(names(data),1)
+    mypath = paste(mypath, paste("class == ",classvalue,sep=""))
+    print(mypath)
+    mypath = c()
+  }else{
+    
+    #chose the attribute with the minimum impurity
+    Min_att = ChoseAttribute(data)
+    Root$feature = Min_att
+    New_Root = Root$AddChild(Min_att)
+    cat("The new node is ", Min_att, "\n")
+    if(is.numeric(data[,Min_att])==TRUE){
+      Output_num = AttNumSplit(data, Min_att)
+      t = Output_num[[2]]
+      newdata = NewData(data, Min_att, t)
+      dat = split(newdata [,!(names(newdata) %in% "att_factor")], newdata[,"att_factor"], drop = TRUE)
+    }else{
+      dat = split(data[,!(names(data) %in% Min_att)], data[,Min_att], drop = TRUE)
+      
+    }
+    
+    for(k in 1:length(dat)) {
+      #construct a child having the name of that feature value (e.g. 'red')
+      New_Path = paste(Min_att," == ", names(dat)[k], sep = " ")
+      mypath = paste(mypath, New_Path, sep = " ")
+      child = New_Root$AddChild(names(dat)[k])
+      
+      #call the algorithm recursively on the child and the subset      
+      TrainID3(dat[[k]],child,mypath)
+    }
+  }
+  return(Root)
+}
+
+
+Root = Node$new("")
+tree = TrainID3(Train1,Root)
+tree
+
